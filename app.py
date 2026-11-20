@@ -1,148 +1,276 @@
-from __future__ import annotations
-
-import json
-import tempfile
-from dataclasses import asdict
-from io import BytesIO
-from pathlib import Path
 
 import streamlit as st
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether
+import json
+from datetime import datetime
+from phishguard.analyzer import analyze_email
 
-from phishguard.analyzer import analyze_file, analyze_message
-
-st.set_page_config(page_title="PhishGuard | Email Security Analyzer", page_icon="🛡️", layout="wide")
+st.set_page_config(
+    page_title="PhishGuard",
+    page_icon="🛡️",
+    layout="wide"
+)
 
 st.markdown("""
 <style>
-  .stApp { background: #f4f7fc; }
-  [data-testid="stHeader"] { background: rgba(244,247,252,.9); }
-  .hero { background: linear-gradient(120deg,#101d3b,#174b86); padding: 28px 32px; border-radius: 18px; color: white; margin-bottom: 22px; }
-  .hero h1 { color: white; margin: 0; font-size: 2.15rem; }
-  .hero p { color: #dce9ff; margin: 8px 0 0 0; }
-  .metric-card { background: white; border: 1px solid #e3eaf5; border-radius: 14px; padding: 18px; min-height: 112px; }
-  .metric-label { color: #60718b; font-size: .86rem; }
-  .metric-value { color: #14294b; font-size: 1.65rem; font-weight: 750; margin-top: 7px; }
-  .small-note { color: #61718a; font-size: .86rem; }
-  div.stButton > button[kind="primary"] { background: #1759a6; border: 0; }
+.stApp {
+    background: linear-gradient(135deg, #07111f, #0b1d33);
+    color: #ffffff;
+}
+.block-container {
+    max-width: 1150px;
+    padding-top: 2rem;
+}
+.hero {
+    background: #102641;
+    border: 1px solid #28517e;
+    border-radius: 18px;
+    padding: 30px;
+    margin-bottom: 25px;
+}
+.hero h1 {
+    color: #ffffff;
+    font-size: 42px;
+}
+.hero p {
+    color: #b8cce5;
+}
+.metric {
+    background: #102641;
+    border: 1px solid #28517e;
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+}
+.metric h2 {
+    color: #55aaff;
+}
+.stTextArea textarea {
+    background: #0a1b30 !important;
+    color: white !important;
+}
+.stButton button, .stDownloadButton button {
+    background: #1769c2;
+    color: white;
+    border-radius: 9px;
+    border: none;
+}
+.stButton button:hover, .stDownloadButton button:hover {
+    background: #2489ed;
+    color: white;
+}
+[data-testid="stFileUploader"] {
+    background: #102641;
+    border-radius: 12px;
+    padding: 15px;
+}
+div[data-testid="stExpander"] {
+    background: #102641;
+    border: 1px solid #28517e;
+}
+section[data-testid="stSidebar"] {
+    background: #09182b;
+}
+footer {
+    visibility: hidden;
+}
+a {
+    color: #70baff !important;
+}
 </style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
 <div class="hero">
-  <h1>🛡️ PhishGuard</h1>
-  <p>Phishing Awareness & Email Triage Toolkit · Analyze suspicious messages safely</p>
+    <h1>🛡️ PhishGuard</h1>
+    <p>Email Phishing Detection & Threat Analysis Platform</p>
+    <p>Analyze suspicious emails and identify potential phishing indicators.</p>
 </div>
 """, unsafe_allow_html=True)
 
-
-def analyze_uploaded(uploaded_file):
-    raw = uploaded_file.getvalue()
-    suffix = Path(uploaded_file.name).suffix.lower()
-    if suffix == ".eml":
-        with tempfile.NamedTemporaryFile(suffix=".eml", delete=False) as tmp:
-            tmp.write(raw)
-            temp_path = tmp.name
-        try:
-            return analyze_file(temp_path)
-        finally:
-            Path(temp_path).unlink(missing_ok=True)
-    if suffix == ".txt":
-        text = raw.decode("utf-8", errors="replace")
-        return analyze_message({"subject": uploaded_file.name, "sender": "", "body": text})
-    raise ValueError("Please upload an .eml or .txt file.")
-
-
-def make_pdf(result):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=18*mm, leftMargin=18*mm, topMargin=16*mm, bottomMargin=16*mm)
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="PGTitle", parent=styles["Title"], textColor=colors.HexColor("#163b6c"), alignment=0, spaceAfter=8))
-    styles.add(ParagraphStyle(name="PGSmall", parent=styles["BodyText"], fontSize=8, leading=11, textColor=colors.HexColor("#42536b")))
-    story = [Paragraph("PhishGuard Analysis Report", styles["PGTitle"]),
-             Paragraph(f"<b>Subject:</b> {result.subject or '(not provided)'}", styles["BodyText"]),
-             Paragraph(f"<b>Sender:</b> {result.sender or '(not provided)'}", styles["BodyText"]),
-             Paragraph(f"<b>Classification:</b> {result.classification} &nbsp;&nbsp; <b>Risk score:</b> {result.risk_score}/100", styles["BodyText"]), Spacer(1, 10)]
-    rows = [["Severity", "Finding", "Points", "Evidence", "Explanation"]]
-    for f in result.findings:
-        rows.append([f["severity"].upper(), f["category"], str(f["points"]), f["evidence"], f["explanation"]])
-    table = Table(rows, colWidths=[20*mm, 30*mm, 13*mm, 48*mm, 62*mm], repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#163b6c")), ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"), ("FONTSIZE", (0,0), (-1,-1), 7),
-        ("LEADING", (0,0), (-1,-1), 9), ("GRID", (0,0), (-1,-1), .35, colors.HexColor("#d5deea")),
-        ("VALIGN", (0,0), (-1,-1), "TOP"), ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f1f5fa")]),
-        ("LEFTPADDING", (0,0), (-1,-1), 5), ("RIGHTPADDING", (0,0), (-1,-1), 5),
-    ]))
-    story += [Paragraph("Findings", styles["Heading2"]), table, Spacer(1, 12),
-              Paragraph("Recommended action", styles["Heading2"]), Paragraph(result.recommended_action, styles["BodyText"]),
-              Spacer(1, 8), Paragraph("Limitations", styles["Heading2"])]
-    story.extend(Paragraph("• " + note, styles["PGSmall"]) for note in result.limitations)
-    doc.build(story)
-    return buffer.getvalue()
-
-
-def show_result(result):
+with st.sidebar:
+    st.title("🛡️ PhishGuard")
+    st.caption("Email Security Analyzer")
     st.divider()
-    st.subheader("Analysis result")
-    status_colors = {"SAFE": "🟢", "SUSPICIOUS": "🟠", "MALICIOUS": "🔴"}
+    st.subheader("How to use")
+    st.write("1. Upload an email file.")
+    st.write("2. Click Analyze Email.")
+    st.write("3. Review the results.")
+    st.divider()
+    st.warning(
+        "This tool uses heuristic checks. "
+        "It cannot guarantee that an email is safe."
+    )
+
+tab1, tab2 = st.tabs(["📎 Upload Email", "✍️ Paste Email"])
+
+email_text = ""
+source_name = "pasted_email.txt"
+
+with tab1:
+    uploaded = st.file_uploader(
+        "Upload your email",
+        type=["eml", "txt"]
+    )
+
+    if uploaded:
+        source_name = uploaded.name
+        email_text = uploaded.getvalue().decode(
+            "utf-8", errors="replace"
+        )
+        st.success(f"Loaded: {uploaded.name}")
+
+with tab2:
+    pasted = st.text_area(
+        "Paste your email content here",
+        height=250,
+        placeholder="From: example@gmail.com\nSubject: Verify your account..."
+    )
+
+    if pasted.strip():
+        email_text = pasted.strip()
+        source_name = "pasted_email.txt"
+
+if st.button("🔍 Analyze Email", use_container_width=True):
+    if not email_text.strip():
+        st.warning("Please upload or paste an email first.")
+    else:
+        st.session_state.result = analyze_email(email_text)
+        st.session_state.source = source_name
+
+if "result" in st.session_state:
+    result = st.session_state.result
+
+    st.divider()
+    st.header("📊 Analysis Results")
+
     c1, c2, c3 = st.columns(3)
+
     with c1:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Classification</div><div class="metric-value">{status_colors.get(result.classification, "⚪")} {result.classification}</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="metric"><h2>{result["risk_score"]}/100</h2>'
+            '<p>Risk Score</p></div>',
+            unsafe_allow_html=True
+        )
+
     with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Risk score</div><div class="metric-value">{result.risk_score}/100</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="metric"><h2>{result["classification"]}</h2>'
+            '<p>Classification</p></div>',
+            unsafe_allow_html=True
+        )
+
     with c3:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Indicators found</div><div class="metric-value">{len([f for f in result.findings if f["points"] > 0])}</div></div>', unsafe_allow_html=True)
-    st.progress(result.risk_score / 100)
-    st.markdown(f"**Subject:** {result.subject or '(not provided)'}  \n**Sender:** {result.sender or '(not provided)'}")
-    st.markdown("#### Red flags and observations")
-    for f in result.findings:
-        icon = {"high": "🔴", "medium": "🟠", "low": "🟡", "info": "🔵"}.get(f["severity"], "⚪")
-        with st.expander(f"{icon} {f['category']} · {f['severity'].upper()} · +{f['points']} points"):
-            st.write("**Evidence:**", f["evidence"])
-            st.write("**Why it matters:**", f["explanation"])
-    st.info("**Recommended action:** " + result.recommended_action)
-    with st.expander("Important limitations"):
-        for note in result.limitations:
-            st.write("• " + note)
-    report = asdict(result)
-    safe_name = "phishguard_report"
-    d1, d2 = st.columns(2)
-    with d1:
-        st.download_button("⬇️ Download JSON report", json.dumps(report, indent=2), file_name=f"{safe_name}.json", mime="application/json", use_container_width=True)
-    with d2:
-        st.download_button("⬇️ Download PDF report", make_pdf(result), file_name=f"{safe_name}.pdf", mime="application/pdf", use_container_width=True)
+        st.markdown(
+            f'<div class="metric"><h2>{len(result["findings"])}</h2>'
+            '<p>Indicators Found</p></div>',
+            unsafe_allow_html=True
+        )
 
-st.markdown("### Choose how to provide the email")
-upload_tab, paste_tab = st.tabs(["📎 Upload email file", "✍️ Paste email text"])
-result = None
-with upload_tab:
-    uploaded = st.file_uploader("Upload an email file", type=["eml", "txt"], help="Supported formats: .eml and .txt")
-    if uploaded is not None:
-        st.caption(f"Selected file: {uploaded.name} · {len(uploaded.getvalue()):,} bytes")
-        if st.button("Analyze uploaded email", type="primary", use_container_width=True):
-            try:
-                with st.spinner("Analyzing email indicators..."):
-                    result = analyze_uploaded(uploaded)
-                st.session_state["last_result"] = result
-            except Exception as exc:
-                st.error(f"Could not analyze this file: {exc}")
-with paste_tab:
-    subject = st.text_input("Email subject", placeholder="Example: Urgent account verification")
-    sender = st.text_input("From address (optional)", placeholder="Example: support@example.com")
-    reply_to = st.text_input("Reply-To address (optional)", placeholder="Example: help@example.com")
-    body = st.text_area("Email body", height=220, placeholder="Paste the email content here...")
-    if st.button("Analyze pasted email", type="primary", use_container_width=True):
-        if not body.strip() and not subject.strip():
-            st.warning("Please enter an email subject or body first.")
+    st.subheader("Analysis Summary")
+    st.info(result["summary"])
+
+    left, right = st.columns(2)
+
+    with left:
+        st.subheader("🔎 Security Findings")
+
+        if result["findings"]:
+            for finding in result["findings"]:
+                with st.expander(finding["title"]):
+                    st.write(finding["detail"])
+                    st.caption(
+                        f"Risk points: {finding['points']}"
+                    )
         else:
-            with st.spinner("Analyzing email indicators..."):
-                result = analyze_message({"subject": subject, "sender": sender, "reply_to": reply_to, "body": body})
-            st.session_state["last_result"] = result
+            st.success("No obvious indicators detected.")
 
-if "last_result" in st.session_state:
-    show_result(st.session_state["last_result"])
+    with right:
+        st.subheader("✅ Recommended Actions")
+
+        for action in result["recommendations"]:
+            st.write("• " + action)
+
+        st.subheader("📧 Email Information")
+
+        for key, value in result["email_details"].items():
+            st.write(f"**{key}:** {value or 'Not available'}")
+
+    report = {
+        "tool": "PhishGuard",
+        "developer": "Rizwan Karim Lam",
+        "analyzed_at": datetime.utcnow().isoformat() + "Z",
+        "source": st.session_state.get("source", "email"),
+        **result
+    }
+
+    st.divider()
+    st.subheader("📥 Download Reports")
+
+    json_data = json.dumps(report, indent=4)
+
+    st.download_button(
+        "Download JSON Report",
+        json_data,
+        file_name="phishguard_report.json",
+        mime="application/json"
+    )
+
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 18)
+        pdf.cell(0, 12, "PhishGuard Analysis Report", ln=True)
+
+        pdf.set_font("Arial", size=11)
+        pdf.cell(0, 9, f"Risk Score: {result['risk_score']}/100", ln=True)
+        pdf.cell(0, 9, f"Classification: {result['classification']}", ln=True)
+        pdf.multi_cell(0, 8, result["summary"])
+
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, "Security Findings", ln=True)
+
+        pdf.set_font("Arial", size=10)
+        for item in result["findings"]:
+            pdf.multi_cell(
+                0, 7,
+                f"{item['title']}: {item['detail']}"
+            )
+
+        pdf.ln(4)
+        pdf.set_font("Arial", "B", 14)
+        pdf.cell(0, 10, "Recommendations", ln=True)
+
+        pdf.set_font("Arial", size=10)
+        for action in result["recommendations"]:
+            pdf.multi_cell(0, 7, action)
+
+        pdf_bytes = bytes(pdf.output())
+
+        st.download_button(
+            "Download PDF Report",
+            pdf_bytes,
+            file_name="phishguard_report.pdf",
+            mime="application/pdf"
+        )
+
+    except Exception as error:
+        st.warning("PDF report could not be generated.")
 
 st.divider()
-st.markdown("<div class='small-note'>PhishGuard is an educational, rule-based triage assistant. It does not open URLs, download attachments, or prove that an email is safe. Verify important requests through a trusted channel.</div>", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="text-align:center; padding:20px;">
+    <h3 style="color:#ffffff;">PhishGuard</h3>
+    <p>Developed by <b>Rizwan Karim Lam</b></p>
+    <a href="https://www.linkedin.com/in/rizwan-karim-lam/"
+       target="_blank">
+       Connect with me on LinkedIn ↗
+    </a>
+    <p style="color:#9eb4ce; font-size:12px;">
+       Educational Cybersecurity Project
+    </p>
+</div>
+""", unsafe_allow_html=True)
