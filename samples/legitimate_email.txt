@@ -1,0 +1,10 @@
+Subject: Q3 Project Status Update
+
+From: Sarah Lee <sarah.lee@example.org>
+
+Hi Team,
+
+Please review the attached Q3 project status report during your next scheduled team meeting. No immediate action is required.
+
+Thanks,
+Sarah

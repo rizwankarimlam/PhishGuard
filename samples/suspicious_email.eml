@@ -1,0 +1,13 @@
+From: "IT Support" <it-support@company-security-alert.example>
+Reply-To: account-help@external-mail.example
+Return-Path: <bounce@bulk-mail.example>
+To: employee@example.org
+Subject: URGENT: Password expires in 24 hours
+
+Hello,
+
+Your account is locked. Verify now to avoid suspension:
+https://company-login-check.example/verify
+
+Please provide your password and OTP immediately.
+
