@@ -1,10 +1,11 @@
-Subject: Q3 Project Status Update
+From: Library <library@example.edu>
+To: student@example.edu
+Subject: Library opening hours
 
-From: Sarah Lee <sarah.lee@example.org>
+Hello,
 
-Hi Team,
+The library will open at 8:00 AM tomorrow.
+Please check the official university website for updates.
 
-Please review the attached Q3 project status report during your next scheduled team meeting. No immediate action is required.
-
-Thanks,
-Sarah
+Regards,
+Library Team
