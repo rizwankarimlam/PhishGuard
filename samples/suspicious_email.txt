@@ -1,9 +1,8 @@
-Subject: URGENT: Microsoft account locked - verify now
+From: Security Team <security-alert@example-support-login.com>
+Reply-To: verify-account@random-mail.example
+To: user@example.com
+Subject: URGENT: Verify your account immediately
 
-From: Microsoft Support <security-alert@micros0ft-account-check.example>
-Reply-To: helpdesk@external-mail.example
-
-Your account will be suspended immediately. Verify now using:
-https://micros0ft-account-check.example/login
-
-Reply with your password and OTP to prevent account closure.
+Your account will be suspended within 24 hours.
+Verify your password and OTP now:
+https://bit.ly/example-login
